@@ -1,0 +1,70 @@
+// 1. Discover all running Docker containers
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+// 2. Relabel to extract the Docker Compose service name
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  // Grab the Compose service name and map it to "service_name"
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service_name"
+  }
+}
+
+// 3. Tail logs from Docker containers and forward to Loki process
+loki.source.docker "docker_logs" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.containers.output
+  forward_to = [loki.process.docker_logs.receiver]
+}
+
+// 4. Process and filter Docker logs before sending to Loki
+loki.process "docker_logs" {
+  forward_to = [loki.write.loki_backend.receiver]
+
+  // Drop logs from the infra services using the new service_name label
+  stage.drop {
+    source     = "service_name"
+    expression = "(alloy|grafana|loki|tempo)"
+  }
+}
+
+// 5. Write logs to Loki
+loki.write "loki_backend" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+// 6. Receive OTLP traces from application
+otelcol.receiver.otlp "default" {
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+  output {
+    traces  = [otelcol.processor.batch.default.input]
+  }
+}
+
+// 7. Batch traces
+otelcol.processor.batch "default" {
+  output {
+    traces  = [otelcol.exporter.otlp.tempo.input]
+  }
+}
+
+// 8. Export traces to Tempo
+otelcol.exporter.otlp "tempo" {
+  client {
+    endpoint = "tempo:4317"
+    tls {
+      insecure = true
+    }
+  }
+}

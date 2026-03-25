@@ -1,0 +1,31 @@
+version: "3"
+
+tasks:
+  dev:
+    env:
+      APP_ENV: development
+    cmd: go run ./cmd/appointment-service
+
+  lint:
+    cmd: golangci-lint run
+
+  test:
+    cmd: go test ./...
+  
+  test-integration:
+    cmd: go test ./integration-test
+
+  migrate-up:
+    requires:
+      vars:
+        - name: ENV
+          enum: [development, test]
+    cmd: go run ./cmd/sql-migrate up --env={{.ENV}} --db=postgres
+
+  migrate-down:
+    requires:
+      vars:
+        - name: ENV
+          enum: [development, test]
+    cmd: go run ./cmd/sql-migrate down --env={{.ENV}} --db=postgres
+
