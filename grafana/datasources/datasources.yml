@@ -12,7 +12,6 @@ datasources:
     access: proxy
     url: http://tempo:3200
     editable: true
-    isDefault: true
     jsonData:
       tracesToLogsV2:
         datasourceUid: 'Loki'
